@@ -55,35 +55,53 @@ namespace Antmicro.Renode.Peripherals.Timers
                 })
             ;
 
-            Register.Time.DefineMany(this, 8, stepInBytes: 4, setup: (reg, idx) =>
+            Register.Time.DefineMany(this, 2, stepInBytes: 4, setup: (reg, idx) =>
             {
                 // idx=0 - most significant byte
                 // ...
                 // idx=7 - least significant byte
-                reg.WithValueField(0, 8, valueProviderCallback: (_) =>
+                reg.WithValueField(0, 32, valueProviderCallback: (_) =>
                 {
-                    return (uint)(latchedValue >> ((7 - idx) * 8) & 0xff);
+                    return (uint)(latchedValue >> ((1 - idx) * 32) & 0xffffffff);
                 });
             });
 
-            Register.TimeCompare.DefineMany(this, 8, stepInBytes: 4, setup: (reg, idx) =>
-            {
-                // idx=0 - most significant byte
-                // ...
-                // idx=7 - least significant byte
-
-                // this field should by 8-bits long, but it's defined as 32-bits (and the value is ANDed with 0xFF) to avoid unhandled bits warnings
-                reg.WithValueField(0, 32, writeCallback: (_, val) =>
+	    Register.TimeCompareLow.Define(this)
+                .WithValueField(0, 32, FieldMode.Write, writeCallback: (_, value) =>
                 {
-                    innerTimer.Compare = innerTimer.Compare.ReplaceBits((ulong)(val & 0xFF), 8, (7 - idx) * 8);
-                    this.Log(LogLevel.Noisy, "Compare value set to 0x{0:X}, dpos: {1}", innerTimer.Compare, (7 - idx) * 8);
+                    innerTimer.Compare = innerTimer.Compare.ReplaceBits(value, 32, 32);
+                    this.Log(LogLevel.Noisy, "Compare value set to 0x{0:X}, dpos: {1}", innerTimer.Compare, 0);
                     if(innerTimer.Value < innerTimer.Compare)
                     {
                         this.Log(LogLevel.Noisy, "Current timer value is 0x{0:X} - clearing IRQ", innerTimer.Value);
                         IRQ.Set(false);
                     }
+                }, name: "LOW")
+	    ;
+	    Register.TimeCompareHigh.Define(this)
+                .WithValueField(0, 32, FieldMode.Write, writeCallback: (_, value) =>
+                {
+                    innerTimer.Compare = innerTimer.Compare.ReplaceBits(value, 32, 0);
+                    this.Log(LogLevel.Noisy, "Compare value set to 0x{0:X}, dpos: {1}", innerTimer.Compare, 32);
+                    if(innerTimer.Value < innerTimer.Compare)
+                    {
+                        this.Log(LogLevel.Noisy, "Current timer value is 0x{0:X} - clearing IRQ", innerTimer.Value);
+                        IRQ.Set(false);
+                    }
+                }, name: "HIGH")
+            ;
+            /*  Register.TimeCompare.DefineMany(this, 2, stepInBytes: 4, setup: (reg, idx) =>
+            {
+                // idx=0 - most significant byte
+                // ...
+                // idx=7 - least significant byte
+
+                reg.WithValueField(0, 32, writeCallback: (_, val) =>
+                {
+                    innerTimer.Compare = innerTimer.Compare.ReplaceBits((ulong)(val & 0xFFFFFFFF), 32, (1 - idx) * 32);
+                    this.Log(LogLevel.Noisy, "Compare value set to 0x{0:X}, dpos: {1}", innerTimer.Compare, (1 - idx) * 32);
                 });
-            });
+            }); */
         }
 
         private readonly ComparingTimer innerTimer;
@@ -93,7 +111,8 @@ namespace Antmicro.Renode.Peripherals.Timers
         {
             Latch = 0x0,
             Time = 0x4,
-            TimeCompare = 0x24,
+            TimeCompareHigh = 0xc,
+            TimeCompareLow = 0x10
         }
     }
 }
